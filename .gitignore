@@ -1,0 +1,5 @@
+docs/osm-streets-raw.json
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
