@@ -20,6 +20,28 @@ window.Views = (() => {
   function resize() { const r = V.cv.getBoundingClientRect(); V.dpr = Math.min(2, devicePixelRatio || 1); V.w = r.width; V.h = r.height; V.cv.width = Math.round(r.width * V.dpr); V.cv.height = Math.round(r.height * V.dpr); }
   const toScreen = (x, y) => [V.w / 2 + (x - V.cx) * V.scale, V.h / 2 - (y - V.cy) * V.scale];
   const toModel = (e) => { const r = V.cv.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top; return [V.cx + (sx - V.w / 2) / V.scale, V.cy - (sy - V.h / 2) / V.scale]; };
+  /* ---------- downtown base layer (all streets, buildings and parks in the data), cached per view ---------- */
+  let base = null, baseT = null, BB = null;
+  const DRIVE_W = { motorway: 4, trunk: 4, primary: 4, secondary: 4, tertiary: 2, unclassified: 2, residential: 2, living_street: 1, service: 1, motorway_link: 1, trunk_link: 1, primary_link: 1, secondary_link: 1, tertiary_link: 1 };
+  function prepBB() { if (BB) return; BB = { ways: [], b: [], parks: [] }; if (window.OSMS) for (const w of window.OSMS.ways) BB.ways.push(DRIVE_W[w.hw] ? G.bbox(w.p) : null); if (window.OSM) for (const b of window.OSM.b) BB.b.push(b.part ? null : G.bbox(b.p)); if (window.CITY) for (const pk of window.CITY.parks) BB.parks.push(G.bbox(pk.p)); const xs = [], ys = []; if (window.OSM) for (const bb of BB.b) if (bb) { xs.push(bb[0], bb[2]); ys.push(bb[1], bb[3]); } BB.all = xs.length ? [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] : [-2400, -1700, 2000, 2100]; }
+  function renderBase() {
+    prepBB(); const S = V.scale, dpr = V.dpr; const cv = document.createElement('canvas'); cv.width = Math.round(V.w * dpr); cv.height = Math.round(V.h * dpr); const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const theme = css('--stage'); c.fillStyle = theme; c.fillRect(0, 0, V.w, V.h);
+    const vis = [V.cx - V.w / 2 / S - 20, V.cy - V.h / 2 / S - 20, V.cx + V.w / 2 / S + 20, V.cy + V.h / 2 / S + 20]; const hit = (bb) => bb && bb[2] >= vis[0] && bb[0] <= vis[2] && bb[3] >= vis[1] && bb[1] <= vis[3];
+    const sc = (x, y) => [V.w / 2 + (x - V.cx) * S, V.h / 2 - (y - V.cy) * S];
+    const path = (P, close) => { c.beginPath(); for (let i = 0; i < P.length; i++) { const p = sc(P[i][0], P[i][1]); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); } if (close) c.closePath(); };
+    if (window.CITY) { c.fillStyle = css('--park'); window.CITY.parks.forEach((pk, i) => { if (hit(BB.parks[i])) { path(pk.p, true); c.fill(); } }); }
+    if (window.OSMS) { c.strokeStyle = css('--street'); c.lineCap = 'round'; c.lineJoin = 'round'; window.OSMS.ways.forEach((w, i) => { const bb = BB.ways[i]; if (!hit(bb)) return; if (S < 0.35 && (w.hw === 'service' || w.hw === 'living_street')) return; const lanes = w.lanes || DRIVE_W[w.hw]; c.lineWidth = Math.max(0.8, (lanes * 3.3 + (w.hw === 'service' ? 0 : 1)) * S); path(w.p, false); c.stroke(); }); }
+    if (window.OSM) { const fill = css('--context'), edge = css('--context-edge'); c.fillStyle = fill; c.strokeStyle = edge; c.lineWidth = 0.5; window.OSM.b.forEach((b, i) => { const bb = BB.b[i]; if (!hit(bb)) return; if ((bb[2] - bb[0]) * (bb[3] - bb[1]) * S * S < 6) return; path(b.p, true); c.fill(); if (S > 0.6) c.stroke(); }); }
+    base = { canvas: cv, scale: S, cx: V.cx, cy: V.cy, w: V.w, h: V.h, theme };
+  }
+  function drawBase(c) {
+    const theme = css('--stage');
+    if (!base || base.w !== V.w || base.h !== V.h || base.theme !== theme) renderBase();
+    if (base.scale !== V.scale || base.cx !== V.cx || base.cy !== V.cy) { const r = V.scale / base.scale; const ox = V.w / 2 + (base.cx - V.cx) * V.scale - base.w / 2 * r, oy = V.h / 2 - (base.cy - V.cy) * V.scale - base.h / 2 * r; c.fillStyle = theme; c.fillRect(0, 0, V.w, V.h); c.drawImage(base.canvas, ox, oy, base.w * r, base.h * r); clearTimeout(baseT); baseT = setTimeout(() => { base = null; V.needs = true; }, 160); return; }
+    c.drawImage(base.canvas, 0, 0, V.w, V.h);
+  }
+  function fitDowntown() { prepBB(); const bb = BB.all; V.cx = (bb[0] + bb[2]) / 2; V.cy = (bb[1] + bb[3]) / 2; V.scale = Math.min(V.w / (bb[2] - bb[0]), V.h / (bb[3] - bb[1])) * 0.95; V.needs = true; }
   function fit(centre, R) { V.cx = centre[0]; V.cy = centre[1]; V.scale = Math.min(V.w, V.h) / (2 * R * 1.08); V.needs = true; }
   function loop() { if (V.needs || (V.getState && V.getState().live)) { V.needs = false; try { draw(); } catch (err) { console.error(err); } } requestAnimationFrame(loop); }
 
@@ -38,7 +60,7 @@ window.Views = (() => {
   /* ---------- drawing ---------- */
   function draw() {
     const st = V.getState ? V.getState() : {}; const c = V.ctx; c.setTransform(V.dpr, 0, 0, V.dpr, 0, 0); c.clearRect(0, 0, V.w, V.h);
-    c.fillStyle = css('--stage'); c.fillRect(0, 0, V.w, V.h);
+    drawBase(c);
     const S = V.scale; const net = st.net; const res = st.res; const mode = st.mode || 'live';
     const line = (poly, w, color, dash) => { c.beginPath(); for (let i = 0; i < poly.length; i++) { const p = toScreen(poly[i][0], poly[i][1]); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); } c.lineWidth = w; c.strokeStyle = color; c.setLineDash(dash || []); c.stroke(); c.setLineDash([]); };
     const poly = (ring, fill, stroke, lw) => { c.beginPath(); ring.forEach((q, i) => { const p = toScreen(q[0], q[1]); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); }); c.closePath(); if (fill) { c.fillStyle = fill; c.fill(); } if (stroke) { c.lineWidth = lw || 1; c.strokeStyle = stroke; c.stroke(); } };
@@ -110,6 +132,6 @@ window.Views = (() => {
   const niceBar = (v) => { const p = Math.pow(10, Math.floor(Math.log10(v))); const m = v / p; return (m < 2 ? 1 : m < 5 ? 2 : 5) * p; };
   function hexA(hex, a) { const h = hex.replace('#', ''); const n = parseInt(h.length === 3 ? h.split('').map((x) => x + x).join('') : h, 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; }
   function shade(hex, t, dk) { const h = hex.replace('#', ''); const n = parseInt(h.length === 3 ? h.split('').map((x) => x + x).join('') : h, 16); let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255; const k = dk ? 1 + 0.35 * t : 1 - 0.14 * t; r = G.clamp(r * k, 0, 255); g = G.clamp(g * k, 0, 255); b = G.clamp(b * k, 0, 255); return `rgb(${r | 0},${g | 0},${b | 0})`; }
-  function snapshot(w, h) { const off = document.createElement('canvas'); off.width = w * 2; off.height = h * 2; const save = { cv: V.cv, ctx: V.ctx, w: V.w, h: V.h, dpr: V.dpr }; V.cv = off; V.ctx = off.getContext('2d'); V.w = w; V.h = h; V.dpr = 2; try { draw(); } finally { Object.assign(V, save); } return off.toDataURL('image/png'); }
-  return { mount, fit, V, toModel, toScreen, snapshot, invalidate: () => { V.needs = true; }, select: (s) => { V.sel = s; V.needs = true; } };
+  function snapshot(w, h) { const off = document.createElement('canvas'); off.width = w * 2; off.height = h * 2; const save = { cv: V.cv, ctx: V.ctx, w: V.w, h: V.h, dpr: V.dpr }; V.cv = off; V.ctx = off.getContext('2d'); V.w = w; V.h = h; V.dpr = 2; const keep = base; base = null; try { draw(); } finally { Object.assign(V, save); base = keep; } return off.toDataURL('image/png'); }
+  return { mount, fit, fitDowntown, V, toModel, toScreen, snapshot, invalidate: () => { V.needs = true; }, select: (s) => { V.sel = s; V.needs = true; } };
 })();

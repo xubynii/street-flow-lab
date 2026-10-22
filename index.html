@@ -46,7 +46,9 @@ button { font: inherit; color: var(--ink); background: var(--panel); border: 1px
 input, select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 6px; } input[type=number] { width: 64px; font-family: var(--mono); font-size: 12.5px; } input[type=range] { padding: 0; width: 100%; accent-color: var(--accent); }
 #top { grid-area: top; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
 #brand { font-weight: 700; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; } #brand i { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); display: inline-block; }
-#tabs { display: flex; gap: 2px; margin-left: 8px; } #tabs button { border: 0; background: transparent; padding: 6px 12px; border-radius: 999px; color: var(--ink2); } #tabs button.on { background: var(--ink); color: var(--bg); } #tabs button:not(.on):hover { background: var(--panel2); }
+#tabs { display: flex; gap: 2px; margin-left: 8px; } #tabs button small { font-family: var(--mono); font-size: 10px; opacity: .55; margin-right: 6px; }
+#runbar { display: flex; gap: 6px; align-items: center; margin-right: 10px; } #runbar select { padding: 5px 6px; max-width: 190px; } #runbar .primary { padding: 5px 14px; }
+.part { font-size: 15px; font-weight: 600; margin: 26px 0 4px; padding-top: 14px; border-top: 2px solid var(--line); } .glance { display: flex; flex-direction: column; gap: 6px; } .glance .g { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line2); padding: 4px 0; } .glance .g span { color: var(--muted); } .glance .g b { font-variant-numeric: tabular-nums; text-align: right; } #tabs button { border: 0; background: transparent; padding: 6px 12px; border-radius: 999px; color: var(--ink2); } #tabs button.on { background: var(--ink); color: var(--bg); } #tabs button:not(.on):hover { background: var(--panel2); }
 #top .sp { flex: 1; } #top .act { display: flex; gap: 6px; }
 #left, #right { overflow: auto; background: var(--panel); } #left { grid-area: left; border-right: 1px solid var(--line); } #right { grid-area: right; border-left: 1px solid var(--line); }
 .pad { padding: 16px 16px 40px; }
@@ -87,8 +89,9 @@ body[data-ws="report"] { grid-template-areas: "top top top" "left report report"
 <body data-ws="site">
 <header id="top">
   <div id="brand"><i></i>Street Flow Lab</div>
-  <nav id="tabs"><button data-ws="site" class="on">Site</button><button data-ws="project">Project</button><button data-ws="people">People</button><button data-ws="access">Access</button><button data-ws="simulate">Simulate</button><button data-ws="results">Results</button><button data-ws="report">Report</button></nav>
+  <nav id="tabs"><button data-ws="site" class="on"><small>1</small>Site</button><button data-ws="building"><small>2</small>Building</button><button data-ws="people"><small>3</small>People</button><button data-ws="results"><small>4</small>Results</button></nav>
   <div class="sp"></div>
+  <div id="runbar"></div>
   <div class="act"><button id="btnHelp">How it works</button><button id="btnLoad">Open…</button><input type="file" id="fileLoad" accept=".json,application/json" hidden><button id="btnSave">Save</button><button id="btnTheme" title="Light / dark">◐</button></div>
 </header>
 <aside id="left"><div class="pad"><p class="hint">Loading the downtown data…</p></div></aside>
@@ -97,12 +100,11 @@ body[data-ws="report"] { grid-template-areas: "top top top" "left report report"
 <section id="report"></section>
 <footer id="status"></footer>
 <dialog id="helpDlg"><h3>How the tool works</h3><ol>
-<li><b>Site</b> — pick the lot. The study area around it is built from OpenStreetMap streets, sidewalks, crossings, signals and transit stops, plus every neighbouring building (floor area estimated from footprint and height, use guessed from zoning and shape).</li>
-<li><b>Project</b> — describe the massing as blocks with a use, or import a Downtown Massing Tool project. Floor area × trip rates × hourly profiles × mode split gives the people and vehicles the building adds.</li>
-<li><b>Access</b> — place the lobby, retail doors, parking ramp, loading and pick-up kerb on the lot edges; add through-block walkways; set how busy the surroundings are.</li>
-<li><b>Simulate</b> — a baseline run (the lot as it is today) and a proposed run with the same random seed. Pedestrians walk the sidewalk graph and wait at crossings; vehicles queue at signals and spill back; trucks and ride-hail stop at the kerb.</li>
-<li><b>Results</b> — levels of service for sidewalks (HCM flow per metre), junctions (control delay) and links (v/c), before and after; walkshed and catchment; change map; tables and CSV export.</li>
-<li><b>Report</b> — a printable summary with maps.</li></ol>
+<li><b>Site</b> — the map shows all of downtown; click any lot or search an address. The study area around it (the circle) is built from OpenStreetMap streets, sidewalks, crossings, signals and stops, plus every neighbouring building with an estimated floor area and use. Sliders set how busy the surroundings are.</li>
+<li><b>Building</b> — the massing as blocks with a use (or an imported Downtown Massing Tool project), the programme it implies, the entrances, parking ramp, loading and pick-up kerb, and the public realm: places to stay and through-block walkways.</li>
+<li><b>People</b> — who the programme brings: eight user groups with speed, schedule, stairs, transit and car habits and how long they stop; and who comes with each use.</li>
+<li><b>Run</b> (top bar) — pick a time window and run: the lot as it is today and with the project, same random seed. Watch animates one scenario. Pedestrians walk the sidewalk graph and wait at crossings; vehicles queue at signals and spill back; trucks and ride-hail stop at the kerb.</li>
+<li><b>Results</b> — levels of service for sidewalks, junctions and links before and after; who is on the site; walksheds; change map; tables, CSV and a printable report.</li></ol>
 <p class="hint">Everything is an estimate for design comparison, not a traffic impact assessment. Calibrate the rates and background levels against counts when you have them.</p><form method="dialog"><button class="primary">Close</button></form></dialog>
 <script src="city-data.js"></script>
 <script src="osm-data.js"></script>
