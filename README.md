@@ -14,13 +14,13 @@ Open http://127.0.0.1:8765/index.html. (Opening `index.html` directly from disk 
 
 ## Workflow
 
-1. **Site** — search an address or click a parcel. The study area (default 450 m) is built from OpenStreetMap streets, sidewalks, crossings, signals and stops, plus every neighbouring building with an estimated floor area and use.
-2. **Project** — describe the massing as blocks (use, footprint, floors) or import a Downtown Massing Tool project JSON (drop it on the page). Trip rates and mode split per use are editable.
-3. **People** — eight user groups (families, seniors and reduced mobility, young adults, office workers, shoppers, diners, hotel guests and tourists, students) with walking speed, stair avoidance, daily schedule, transit/car affinity and how often and how long they stop. Set who comes with each use, and add places to stay on the lot edge (plaza, seating, playground, terrace, arcade, garden) with capacities. A preview chart shows who the building brings by hour.
-4. **Access** — place lobby, retail doors, parking ramp, loading and pick-up kerb on the lot edges; add through-block walkways; tune the surroundings (neighbour activity, through traffic, through-walkers, external share of walk trips).
-5. **Simulate** — pick a time window (AM, midday, PM, evening or custom) and run. Baseline (today) and proposed share the same background random stream, so the difference is the project. **Watch** animates one scenario.
-6. **Results** — a *Who is here* section shows who walks past the frontage and who stays in each place by 15 minutes, with capacity and typical stay; KPI tiles, sidewalk/crossing table, link table, junction delay chart, walkshed, map modes (Sidewalk LOS, Ped density, Traffic LOS, Change, Walkshed), a *By group* toggle that colours live pedestrians by user group, CSV / JSON export. Click anything on the map for its numbers.
-7. **Report** — includes a *Who uses the site* sheet; printable sheets with maps and the assumptions.
+The map shows the whole downtown peninsula (every street, building and park in the data); the circle is the simulated study area. Four tabs, and a run bar that is always in the top bar.
+
+1. **Site** — click any lot on the map or search an address. The study area (default 450 m) is built from OpenStreetMap streets, sidewalks, crossings, signals and stops, plus every neighbouring building with an estimated floor area and use. Sliders set how busy the surroundings are.
+2. **Building** — the massing as blocks (use, footprint, floors) or an imported Downtown Massing Tool project; the programme it implies with editable trip rates; entrances, parking ramp, loading and pick-up kerb; public realm: places to stay (plaza, seating, playground, terrace, arcade, garden) and through-block walkways.
+3. **People** — eight user groups (speed, stairs, schedule, transit/car habits, how long they stop) and who comes with each use, with an hour-by-hour preview.
+4. **Run** (top bar) — pick a window (AM, midday, PM, evening, custom) and press Run: baseline (today) and proposed share the same background random stream. **Watch** animates one scenario; *By group* colours pedestrians by user group.
+5. **Results** — KPI tiles, sidewalk/crossing and link tables, junction delay chart, *Who is here* (who walks past, who stays where), walksheds, map modes (Sidewalk LOS, Ped density, Traffic LOS, Change, Walkshed), CSV / JSON export and a printable report. The right panel shows an at-a-glance summary, or the numbers of whatever you click on the map.
 
 Projects auto-save to the browser (localStorage) and can be saved/opened as JSON (`Save` / `Open…`).
 
@@ -46,7 +46,7 @@ Projects auto-save to the browser (localStorage) and can be saved/opened as JSON
 - `tools/fetch-osm-streets.py [--refresh]` — Overpass download → `src/osm-streets.js` (raw cache in `docs/osm-streets-raw.json`).
 - `tools/serve.py [port]` — local server.
 - `tools/jscheck.py` — syntax check of all modules with esprima (no Node on this machine).
-- `tools/headless.ps1 -Hash selftest` — boots in headless Edge and prints the self-test (`#selftest`). `-Hash run:pedLos|vehLos|change|report` runs both scenarios and screenshots with `-Shot path.png`; `-Hash tab:project` screenshots a panel; `-Hash watch` the live animation; `-Dark` for dark mode.
+- `tools/headless.ps1 -Hash selftest` — boots in headless Edge and prints the self-test (`#selftest`). `-Hash run:pedLos|vehLos|change|report` runs both scenarios and screenshots with `-Shot path.png`; `-Hash tab:building|people|results` screenshots a panel; `-Hash watch` / `watchg` the live animation (coloured by group); `-Hash downtown` the zoomed-out map; `-Dark` for dark mode.
 
 ## Limits
 
