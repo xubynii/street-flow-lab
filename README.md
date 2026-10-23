@@ -2,6 +2,8 @@
 
 Pedestrian and vehicle traffic simulation around a downtown Vancouver massing: how a building's programme and its entrances load the sidewalks, crossings, lanes and junctions around it, compared with the lot as it is today.
 
+![Flow heat: pedestrians per hour on the sidewalks around the site, baseline, PM peak](docs/shot-flow-heat.png)
+
 Browser tool, no build step, no server-side code. Everything runs locally from `src/`.
 
 ## Run it
