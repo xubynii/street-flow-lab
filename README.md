@@ -36,7 +36,7 @@ Projects auto-save to the browser (localStorage) and can be saved/opened as JSON
 
 Changing any setting after a run keeps the last results on screen, marked **Settings changed** with a dot on the Run button, until the next run replaces them. Removing a block, entrance, walkway or place, clearing the blocks, or opening a file can be undone from the notice that appears at the bottom of the map.
 
-Keyboard: `R` runs, `1`–`4` switch stages, `Esc` cancels picking a lot. With the map focused, arrow keys pan, `+`/`-` zoom, `Enter` selects the sidewalk or junction at the centre mark and `Escape` clears it. Rows in the Results tables are focusable and select with `Enter`.
+Keyboard: `R` runs, `1`–`4` switch stages, `Esc` cancels picking a lot. **Basic / Advanced** in the top bar: Basic shows the essentials; Advanced adds the surroundings sliders, the data note, trip rates and mode split, Inside the tower, the group mix, the simulation settings, per-use attribution by simulation, the by-group layer and the 3D camera buttons. The choice is remembered. With the map focused, arrow keys pan, `+`/`-` zoom, `Enter` selects the sidewalk or junction at the centre mark and `Escape` clears it. Rows in the Results tables are focusable and select with `Enter`.
 
 ## Look
 
