@@ -6,6 +6,8 @@ Pedestrian and vehicle traffic simulation around a downtown Vancouver massing: h
 
 Browser tool, no build step, no server-side code. Everything runs locally from `src/`.
 
+**Use it online:** https://xubynii.github.io/street-flow-lab/ (works on any phone, tablet or computer; nothing to install). To publish a new version after committing to `main`, run `sh tools/publish-pages.sh`, which pushes `src/` to the `gh-pages` branch that GitHub Pages serves.
+
 ## Run it
 
 ```
