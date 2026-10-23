@@ -20,11 +20,13 @@ window.Geom = (() => {
   const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 
   /* uniform grid over bboxes */
+  /* query() marks visited items with a stamp; the counter is shared by every grid, because the items (OSM nodes, edges) outlive any one grid and a fresh grid restarting at 1 would mistake an old stamp for "already seen". */
+  let GRID_STAMP = 1;
   class Grid {
-    constructor(cell) { this.cell = cell; this.m = new Map(); this.stamp = 1; }
+    constructor(cell) { this.cell = cell; this.m = new Map(); }
     key(i, j) { return i * 73856093 ^ j * 19349663; }
     insert(item, bb) { const c = this.cell; const i0 = Math.floor(bb[0] / c), j0 = Math.floor(bb[1] / c), i1 = Math.floor(bb[2] / c), j1 = Math.floor(bb[3] / c); for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { const k = this.key(i, j); let a = this.m.get(k); if (!a) { a = []; this.m.set(k, a); } a.push(item); } }
-    query(bb) { const c = this.cell; const i0 = Math.floor(bb[0] / c), j0 = Math.floor(bb[1] / c), i1 = Math.floor(bb[2] / c), j1 = Math.floor(bb[3] / c); const st = ++this.stamp; const out = []; for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { const a = this.m.get(this.key(i, j)); if (!a) continue; for (const it of a) { if (it._st === st) continue; it._st = st; out.push(it); } } return out; }
+    query(bb) { const c = this.cell; const i0 = Math.floor(bb[0] / c), j0 = Math.floor(bb[1] / c), i1 = Math.floor(bb[2] / c), j1 = Math.floor(bb[3] / c); const st = ++GRID_STAMP; const out = []; for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { const a = this.m.get(this.key(i, j)); if (!a) continue; for (const it of a) { if (it._st === st) continue; it._st = st; out.push(it); } } return out; }
     near(p, r) { return this.query([p[0] - r, p[1] - r, p[0] + r, p[1] + r]); }
   }
 
