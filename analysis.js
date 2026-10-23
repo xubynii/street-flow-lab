@@ -45,6 +45,8 @@ window.Analysis = (() => {
     const sw = PE.filter((e) => e.alive && (e.kind === 'sidewalk' || e.kind === 'plaza') && near(e, 200)); K.sidewalksNear = sw.length;
     K.worstSidewalk = sw.length ? sw.reduce((b, e) => (res.ped.rate[e.i] > res.ped.rate[b.i] ? e : b)) : null; K.worstSidewalkRate = K.worstSidewalk ? res.ped.rate[K.worstSidewalk.i] : 0; K.worstSidewalkLOS = grade(K.worstSidewalkRate, PED_LOS);
     K.losCount = [0, 0, 0, 0, 0, 0]; for (const e of sw) K.losCount[res.ped.los[e.i]]++;
+    // street stress: the peak 15-min sidewalk rate each pedestrian meets, averaged over everyone on sidewalks within 200 m (flow-weighted, p/min/m); comparative only
+    let sQ = 0, sQq = 0; for (const e of sw) { const Q = res.ped.hourly[e.i]; sQ += Q; sQq += Q * res.ped.rate[e.i]; } K.stress = sQ ? sQq / sQ : 0;
     const xs = PE.filter((e) => e.alive && e.kind === 'crossing' && near(e, 120)); K.crossings = xs.length; K.crossingFlow = xs.reduce((s, e) => s + res.ped.hourly[e.i], 0); K.crossingWait = xs.length ? xs.reduce((s, e) => s + res.ped.wait[e.i] * res.ped.hourly[e.i], 0) / Math.max(1, K.crossingFlow) : 0;
     K.busiestCrossing = xs.length ? xs.reduce((b, e) => (res.ped.hourly[e.i] > res.ped.hourly[b.i] ? e : b)) : null;
     const ix = (net.nearIx || []).map((i) => VN[i]); K.intersections = ix.map((n) => ({ i: n.i, name: n.name, ctrl: n.ctrl, delay: res.nodes.delay[n.i], los: res.nodes.los[n.i], vol: res.nodes.vol[n.i] }));
@@ -63,9 +65,12 @@ window.Analysis = (() => {
     const n = prop.ped.rate.length; const dPed = new Float32Array(n), dPedLos = new Int8Array(n); for (let i = 0; i < n; i++) { dPed[i] = prop.ped.hourly[i] - base.ped.hourly[i]; dPedLos[i] = prop.ped.los[i] - base.ped.los[i]; }
     const m = prop.veh.vol.length; const dVeh = new Float32Array(m), dVc = new Float32Array(m), dDelay = new Float32Array(m); for (let i = 0; i < m; i++) { dVeh[i] = prop.veh.vol[i] - base.veh.vol[i]; dVc[i] = prop.veh.vc[i] - base.veh.vc[i]; dDelay[i] = prop.veh.delay[i] - base.veh.delay[i]; }
     const k = prop.nodes.delay.length; const dNode = new Float32Array(k); for (let i = 0; i < k; i++) dNode[i] = prop.nodes.delay[i] - base.nodes.delay[i];
-    const worse = []; for (let i = 0; i < n; i++) if (dPedLos[i] > 0) worse.push(i);
-    return { dPed, dPedLos, dVeh, dVc, dDelay, dNode, worseSidewalks: worse.length };
+    const worse = [], worseBad = []; for (let i = 0; i < n; i++) if (dPedLos[i] > 0) { worse.push(i); if (prop.ped.los[i] >= 3) worseBad.push(i); }
+    let linksWorse = 0; for (let i = 0; i < m; i++) if (prop.veh.vc[i] >= 0.9 && base.veh.vc[i] < 0.9) linksWorse++;
+    return { dPed, dPedLos, dVeh, dVc, dDelay, dNode, worseSidewalks: worse.length, worseIdx: worse, worseIntoDEF: worseBad.length, linksWorse };
   }
+  /* compass octant of a point seen from the site centre, to tell two segments of one street apart */
+  const octant = (p, c) => { const a = Math.atan2(p[1] - c[1], p[0] - c[0]); const k = Math.round(((a / Math.PI) * 4 + 8) % 8); return ['E', 'NE', 'N', 'NW', 'W', 'SW', 'S', 'SE'][k]; };
 
   /* walkshed from a node: time-limited Dijkstra; returns reach stats */
   function walkshed(net, dm, root, scenario, seconds, opts) {
@@ -82,7 +87,7 @@ window.Analysis = (() => {
   function catchment(ws, dm) { return ws.got; }
 
   /* table rows for the Results tab */
-  function sidewalkRows(net, base, prop, limitR) { const c = net.centre; const rows = []; for (const e of net.ped.edges) { if (!e.alive || (e.kind !== 'sidewalk' && e.kind !== 'plaza' && e.kind !== 'crossing')) continue; const m = G.pointAt(e.poly, e.L / 2); if (G.dist([m[0], m[1]], c) > limitR) continue; if ((base ? base.ped.hourly[e.i] : 0) + prop.ped.hourly[e.i] <= 0) continue; rows.push({ i: e.i, name: e.name || e.kind, kind: e.kind, frontage: e.frontage, w: e.w, base: base ? base.ped.hourly[e.i] : null, prop: prop.ped.hourly[e.i], baseRate: base ? base.ped.rate[e.i] : null, rate: prop.ped.rate[e.i], baseLos: base ? base.ped.los[e.i] : null, los: prop.ped.los[e.i], wait: prop.ped.wait[e.i] }); } rows.sort((a, b) => b.prop - a.prop); return rows; }
+  function sidewalkRows(net, base, prop, limitR) { const c = net.centre; const rows = []; for (const e of net.ped.edges) { if (!e.alive || (e.kind !== 'sidewalk' && e.kind !== 'plaza' && e.kind !== 'crossing')) continue; const m = G.pointAt(e.poly, e.L / 2); if (G.dist([m[0], m[1]], c) > limitR) continue; if ((base ? base.ped.hourly[e.i] : 0) + prop.ped.hourly[e.i] <= 0) continue; rows.push({ i: e.i, name: e.name || e.kind, dir: octant(m, c), kind: e.kind, frontage: e.frontage, w: e.w, base: base ? base.ped.hourly[e.i] : null, prop: prop.ped.hourly[e.i], baseRate: base ? base.ped.rate[e.i] : null, rate: prop.ped.rate[e.i], baseLos: base ? base.ped.los[e.i] : null, los: prop.ped.los[e.i], wait: prop.ped.wait[e.i] }); } rows.sort((a, b) => b.prop - a.prop); return rows; }
   function linkRows(net, base, prop, limitR) { const c = net.centre; const rows = []; for (const e of net.veh.edges) { if (!e.alive) continue; const m = G.pointAt(e.poly, e.L / 2); if (G.dist([m[0], m[1]], c) > limitR) continue; if ((base ? base.veh.vol[e.i] : 0) + prop.veh.vol[e.i] <= 0) continue; rows.push({ i: e.i, name: e.name || e.cls, cls: e.cls, lanes: e.lanes, cap: e.cap, base: base ? base.veh.vol[e.i] : null, prop: prop.veh.vol[e.i], baseVc: base ? base.veh.vc[e.i] : null, vc: prop.veh.vc[e.i], delay: prop.veh.delay[e.i], baseDelay: base ? base.veh.delay[e.i] : null, maxQ: prop.veh.maxQ[e.i], blocked: prop.veh.blocked[e.i], los: prop.veh.los[e.i], baseLos: base ? base.veh.los[e.i] : null }); } rows.sort((a, b) => b.vc - a.vc); return rows; }
 
   return { compute, compare, walkshed, catchment, sidewalkRows, linkRows, grade, LETTER, PED_LOS, SIG_LOS, UNSIG_LOS, VC_LOS };

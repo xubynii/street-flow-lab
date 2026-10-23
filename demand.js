@@ -79,6 +79,24 @@ window.Demand = (() => {
     gen.attr = Object.keys(uses).reduce((s, u) => s + (USES[u] ? USES[u].attr * uses[u] / 100 : 0), 0) * (gen.kind === 'ctx' ? P.ctxIntensity : 1);
     return gen;
   }
+  /* one use on its own: hourly in/out by mode (with totals), kerb pick-ups, deliveries and daily sums; the same arithmetic as hourly() */
+  function useProfile(u, gfa, P) {
+    P = Object.assign({}, DEFAULTS, P || {}); const U = USES[u]; const rate = U && P.rates[u] != null ? P.rates[u] : U ? U.rate : 0; const k = P.intensity;
+    const r = { in: [], out: [], pudo: new Array(24).fill(0), truck: new Array(24).fill(0), daily: { walk: 0, transit: 0, car: 0, bike: 0, total: 0, truck: 0, pudo: 0 } };
+    for (let h = 0; h < 24; h++) { r.in.push({ walk: 0, transit: 0, car: 0, bike: 0, total: 0 }); r.out.push({ walk: 0, transit: 0, car: 0, bike: 0, total: 0 }); }
+    if (!U || !rate || !gfa) return r;
+    const daily = rate * gfa / 100 * k; const md = modesOf(u, P); const trucks = (U.truck || 0) * (U.unit ? gfa / U.unit : gfa / 100) * k; const tp = prof([[10, 2.2, 0.7], [14.5, 2, 0.3]], 0.005);
+    for (let h = 0; h < 24; h++) { const o = daily / 2 * U.out[h], i = daily / 2 * U.in[h]; for (const m of MODES) { r.out[h][m] = o * md[m]; r.in[h][m] = i * md[m]; } r.out[h].total = o; r.in[h].total = i; r.pudo[h] = (o + i) * md.car * U.pudo; r.truck[h] = trucks * tp[h]; }
+    for (const m of MODES) r.daily[m] = daily * md[m]; r.daily.total = daily; r.daily.truck = trucks; r.daily.pudo = daily * md.car * U.pudo;
+    return r;
+  }
+  /* what each use puts on the street in a window [t0, t1) in hours: people on foot at the doors, cars, kerb pick-ups, deliveries, per hour */
+  function useBreakdown(uses, P, t0, t1) {
+    const rows = []; const hrs = Math.max(0.25, t1 - t0);
+    for (const u in uses) { if (!uses[u] || u === 'parking') continue; const pr = useProfile(u, uses[u], P); let foot = 0, car = 0, pudo = 0, truck = 0; for (let h = Math.floor(t0); h < Math.ceil(t1); h++) { const f = Math.min(t1, h + 1) - Math.max(t0, h); if (f <= 0) continue; const hi = pr.in[h % 24], ho = pr.out[h % 24]; foot += f * (hi.walk + hi.transit + ho.walk + ho.transit); car += f * (hi.car + ho.car); pudo += f * pr.pudo[h % 24]; truck += f * pr.truck[h % 24]; } rows.push({ use: u, label: USES[u].label, gfa: uses[u], daily: pr.daily.total, foot: foot / hrs, car: car / hrs, pudo: pudo / hrs, truck: truck / hrs }); }
+    const tf = rows.reduce((a, r) => a + r.foot, 0) || 1, tc = rows.reduce((a, r) => a + r.car, 0) || 1; for (const r of rows) { r.footShare = r.foot / tf; r.carShare = r.car / tc; }
+    rows.sort((a, b) => b.foot - a.foot); return rows;
+  }
   function modesOf(u, P) { const base = Object.assign({}, USES[u].modes, P.modes[u] || {}); const car = Math.min(0.9, base.car * P.carShift); const rest = 1 - car; const sum = base.walk + base.transit + base.bike || 1; const f = rest / sum; return { walk: base.walk * f, transit: base.transit * f, bike: base.bike * f, car }; }
 
   /* ---------- group tables: P(group | use, mode, hour) as cumulative weights ---------- */
@@ -189,5 +207,5 @@ window.Demand = (() => {
   function parkingProfile(gens) { const rows = []; for (let h = 0; h < 24; h++) { let i = 0, o = 0; for (const g of gens) { i += g.in[h].car - g.pudoRate.in[h]; o += g.out[h].car - g.pudoRate.out[h]; } rows.push({ h, i, o }); }
     let run = 0; const series = rows.map((r) => { run += r.i - r.o; return run; }); const mn = Math.min(...series, 0); return series.map((v, h) => ({ h, cars: Math.max(0, Math.round(v - mn)) })); }
 
-  return { USES, USE_KEYS, MODES, DEFAULTS, GROUPS, USE_MIX, STREET_MIX, SPACE_TYPES, SCHEDULES, shapeOf, defaultPeople, groupTables, TRAFFIC_PROF, PED_PROF, prepare, hourly, rateAt, expected, summary, profile, groupProfile, parkingProfile, modesOf, prof };
+  return { USES, USE_KEYS, MODES, DEFAULTS, GROUPS, USE_MIX, STREET_MIX, SPACE_TYPES, SCHEDULES, shapeOf, defaultPeople, groupTables, TRAFFIC_PROF, PED_PROF, prepare, hourly, useProfile, useBreakdown, rateAt, expected, summary, profile, groupProfile, parkingProfile, modesOf, prof };
 })();
