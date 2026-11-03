@@ -30,6 +30,19 @@ window.Geom = (() => {
     near(p, r) { return this.query([p[0] - r, p[1] - r, p[0] + r, p[1] + r]); }
   }
 
+  /* study region: a circle {kind:'circle', cx, cy, R} or an axis-aligned rectangle {kind:'rect', x0, y0, x1, y1}; dist is signed distance to the boundary (negative inside) */
+  const region = {
+    circle: (cx, cy, R) => ({ kind: 'circle', cx, cy, R }),
+    rect: (ax, ay, bx, by) => ({ kind: 'rect', x0: Math.min(ax, bx), y0: Math.min(ay, by), x1: Math.max(ax, bx), y1: Math.max(ay, by) }),
+    dist: (r, p) => { if (r.kind === 'rect') { const dx = Math.max(r.x0 - p[0], 0, p[0] - r.x1), dy = Math.max(r.y0 - p[1], 0, p[1] - r.y1); if (dx > 0 || dy > 0) return Math.hypot(dx, dy); return -Math.min(p[0] - r.x0, r.x1 - p[0], p[1] - r.y0, r.y1 - p[1]); } return Math.hypot(p[0] - r.cx, p[1] - r.cy) - r.R; },
+    contains: (r, p, pad) => region.dist(r, p) <= (pad || 0),
+    centre: (r) => (r.kind === 'rect' ? [(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2] : [r.cx, r.cy]),
+    radius: (r) => (r.kind === 'rect' ? Math.hypot(r.x1 - r.x0, r.y1 - r.y0) / 2 : r.R),  // half-diagonal for a rectangle
+    bbox: (r) => (r.kind === 'rect' ? [r.x0, r.y0, r.x1, r.y1] : [r.cx - r.R, r.cy - r.R, r.cx + r.R, r.cy + r.R]),
+    moveTo: (r, c) => { const o = region.centre(r); const dx = c[0] - o[0], dy = c[1] - o[1]; return r.kind === 'rect' ? region.rect(r.x0 + dx, r.y0 + dy, r.x1 + dx, r.y1 + dy) : region.circle(c[0], c[1], r.R); },
+    area: (r) => (r.kind === 'rect' ? (r.x1 - r.x0) * (r.y1 - r.y0) : Math.PI * r.R * r.R),
+    describe: (r) => (r.kind === 'rect' ? `${Math.round(r.x1 - r.x0)} × ${Math.round(r.y1 - r.y0)} m rectangle` : `${Math.round(r.R)} m radius`),
+  };
   /* deterministic RNG (mulberry32) */
   function rng(seed) { let a = seed >>> 0; const f = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; f.int = (n) => Math.floor(f() * n); f.pick = (arr) => arr[Math.floor(f() * arr.length)]; f.exp = (mean) => -Math.log(1 - f()) * mean; f.norm = () => { const u = 1 - f(), v = f(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }; f.poisson = (lam) => { if (lam <= 0) return 0; if (lam > 30) return Math.max(0, Math.round(lam + Math.sqrt(lam) * f.norm())); const L = Math.exp(-lam); let k = 0, p = 1; do { k++; p *= f(); } while (p > L); return k - 1; }; f.weighted = (cum) => { const r = f() * cum[cum.length - 1]; let lo = 0, hi = cum.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < r) lo = m + 1; else hi = m; } return lo; }; return f; }
 
@@ -39,5 +52,5 @@ window.Geom = (() => {
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
   const fmt = (v, d = 0) => (v == null || !isFinite(v) ? '–' : Number(v).toLocaleString('en-CA', { maximumFractionDigits: d, minimumFractionDigits: d }));
-  return { dist, pip, ringArea, centroid, bbox, segDist, proj, polyLen, projPoly, pointAt, splitPoly, offsetPoly, bearing, angDiff, Grid, rng, Heap, clamp, lerp, fmt };
+  return { dist, pip, region, ringArea, centroid, bbox, segDist, proj, polyLen, projPoly, pointAt, splitPoly, offsetPoly, bearing, angDiff, Grid, rng, Heap, clamp, lerp, fmt };
 })();

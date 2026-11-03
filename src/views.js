@@ -1,7 +1,7 @@
 /* Street Flow Lab · views.js — the map canvas: context, site, massing, networks, agents and analysis overlays. */
 window.Views = (() => {
   const G = window.Geom;
-  const V = { cv: null, ctx: null, scale: 1.2, cx: 0, cy: 0, w: 0, h: 0, dpr: 1, hover: null, sel: null, onSelect: null, onHover: null, onPick: null, getState: null, needs: true, picking: false, mode3d: false, az: -0.6, tilt: 0.95 };
+  const V = { cv: null, ctx: null, scale: 1.2, cx: 0, cy: 0, w: 0, h: 0, dpr: 1, hover: null, sel: null, onSelect: null, onHover: null, onPick: null, getState: null, needs: true, picking: false, drawing: null, drawPreview: null, onDraw: null, mode3d: false, az: -0.6, tilt: 0.95 };
   /* 3D: a parallel (axonometric) projection. The ground plane maps to the screen by an affine transform, so every flat layer is drawn once in plan and draped; buildings and flow ribbons are drawn on top as sorted prisms. az rotates about the vertical, tilt is the elevation angle (π/2 = plan). */
   const rot = (x, y) => { const ca = Math.cos(V.az), sa = Math.sin(V.az); return [x * ca - y * sa, x * sa + y * ca]; };
   const toScreen3 = (x, y, z) => { const r = rot(x - V.cx, y - V.cy); return [V.w / 2 + r[0] * V.scale, V.h / 2 - (r[1] * Math.sin(V.tilt) + (z || 0) * Math.cos(V.tilt)) * V.scale]; };
@@ -14,15 +14,16 @@ window.Views = (() => {
     V.cv = cv; V.ctx = cv.getContext('2d'); resize(); addEventListener('resize', () => { resize(); V.needs = true; });
     let drag = null;
     cv.addEventListener('contextmenu', (e) => { if (V.mode3d) e.preventDefault(); });
-    cv.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, cx: V.cx, cy: V.cy, az: V.az, tilt: V.tilt, orbit: V.mode3d && (e.button === 2 || e.shiftKey || e.altKey), moved: false }; cv.setPointerCapture(e.pointerId); });
+    cv.addEventListener('pointerdown', (e) => { if (V.drawing) { const m = toModel(e); drag = { draw: true, m0: m, moved: false }; cv.setPointerCapture(e.pointerId); V.drawPreview = null; return; } drag = { x: e.clientX, y: e.clientY, cx: V.cx, cy: V.cy, az: V.az, tilt: V.tilt, orbit: V.mode3d && (e.button === 2 || e.shiftKey || e.altKey), moved: false }; cv.setPointerCapture(e.pointerId); });
     cv.addEventListener('pointermove', (e) => {
+      if (drag && drag.draw) { const m = toModel(e); drag.moved = true; V.drawPreview = V.drawing === 'rect' ? G.region.rect(drag.m0[0], drag.m0[1], m[0], m[1]) : G.region.circle(drag.m0[0], drag.m0[1], Math.hypot(m[0] - drag.m0[0], m[1] - drag.m0[1])); V.needs = true; return; }
       if (drag) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
         if (drag.orbit) { V.az = drag.az - dx * 0.008; V.tilt = G.clamp(drag.tilt + dy * 0.006, 0.35, Math.PI / 2); }
         else if (V.mode3d) { const inv = unrot(dx / V.scale, -dy / (V.scale * Math.sin(V.tilt))); V.cx = drag.cx - inv[0]; V.cy = drag.cy - inv[1]; }
         else { V.cx = drag.cx - dx / V.scale; V.cy = drag.cy + dy / V.scale; }
         V.needs = true; return; }
       const m = toModel(e); const h = pick(m); if (hoverKey(h) !== hoverKey(V.hover)) { V.hover = h; V.needs = true; } if (V.onHover) V.onHover(h, e); });
-    cv.addEventListener('pointerup', (e) => { if (drag && !drag.moved) { const m = toModel(e); if (V.picking && V.onPick) V.onPick(m); else { V.sel = pick(m); if (V.onSelect) V.onSelect(V.sel, m); } V.needs = true; } drag = null; });
+    cv.addEventListener('pointerup', (e) => { if (drag && drag.draw) { const reg = drag.moved ? V.drawPreview : null; drag = null; V.drawPreview = null; V.needs = true; if (V.onDraw) V.onDraw(reg); return; } if (drag && !drag.moved) { const m = toModel(e); if (V.picking && V.onPick) V.onPick(m); else { V.sel = pick(m); if (V.onSelect) V.onSelect(V.sel, m); } V.needs = true; } drag = null; });
     cv.addEventListener('pointerleave', () => { V.hover = null; V.needs = true; if (V.onHover) V.onHover(null); });
     cv.addEventListener('wheel', (e) => { e.preventDefault(); const m = toModel(e); const f = Math.exp(-e.deltaY * 0.0012); const ns = G.clamp(V.scale * f, 0.15, 14); V.cx = m[0] - (m[0] - V.cx) * V.scale / ns; V.cy = m[1] - (m[1] - V.cy) * V.scale / ns; V.scale = ns; V.needs = true; }, { passive: false });
     // keyboard: arrows pan, + / - zoom, Enter selects what sits at the centre, Escape clears
@@ -73,6 +74,7 @@ window.Views = (() => {
   }
   function fitDowntown() { prepBB(); const bb = BB.all; V.cx = (bb[0] + bb[2]) / 2; V.cy = (bb[1] + bb[3]) / 2; V.scale = Math.min(V.w / (bb[2] - bb[0]), V.h / (bb[3] - bb[1])) * 0.95; V.needs = true; }
   function fit(centre, R) { V.cx = centre[0]; V.cy = centre[1]; V.scale = Math.min(V.w, V.h) / (2 * R * 1.08); V.needs = true; }
+  function fitRegion(reg) { const bb = G.region.bbox(reg); V.cx = (bb[0] + bb[2]) / 2; V.cy = (bb[1] + bb[3]) / 2; V.scale = Math.min(V.w / (bb[2] - bb[0]), V.h / (bb[3] - bb[1])) / 1.08; V.needs = true; }
   function loop() { if (V.needs || (V.getState && V.getState().live)) { V.needs = false; try { draw(); } catch (err) { console.error(err); } } requestAnimationFrame(loop); }
 
   /* ---------- picking ---------- */
@@ -91,8 +93,9 @@ window.Views = (() => {
   let heat = null;
   function heatField(st) {
     const kind = st.heatKind === 'veh' ? 'veh' : 'ped'; const res = st.res; if (!res || !st.net) return null;
-    if (heat && heat.res === res && heat.kind === kind && heat.R === st.R && heat.cx === st.centre[0] && heat.cy === st.centre[1] && heat.dark === Charts.dark()) return heat;
-    const cell = 3, pad = 40; const x0 = st.centre[0] - st.R - pad, y0 = st.centre[1] - st.R - pad; const n = Math.ceil((2 * st.R + 2 * pad) / cell); const acc = new Float32Array(n * n);
+    const reg = st.region || G.region.circle(st.centre[0], st.centre[1], st.R); const bb = G.region.bbox(reg); const key = bb.join(',');
+    if (heat && heat.res === res && heat.kind === kind && heat.key === key && heat.dark === Charts.dark()) return heat;
+    const cell = 3, pad = 40; const x0 = bb[0] - pad, y0 = bb[1] - pad; const n = Math.ceil((Math.max(bb[2] - bb[0], bb[3] - bb[1]) + 2 * pad) / cell); const acc = new Float32Array(n * n);
     const add = (poly, v) => { for (let i = 1; i < poly.length; i++) { const a = poly[i - 1], b = poly[i]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const steps = Math.max(1, Math.ceil(L / (cell * 0.5))); for (let s = 0; s <= steps; s++) { const t = s / steps; const x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t; const ix = Math.floor((x - x0) / cell), iy = Math.floor((y - y0) / cell); if (ix >= 0 && iy >= 0 && ix < n && iy < n) acc[iy * n + ix] += v / (steps + 1) * L / cell; } } };
     if (kind === 'ped') { for (const e of st.net.ped.alive || st.net.ped.edges) { if (!e.alive || e.kind === 'link') continue; const v = res.ped.hourly[e.i]; if (v > 0) add(e.poly, v); } }
     else { for (const e of st.net.veh.edges) { if (!e.alive) continue; const v = res.veh.vol[e.i]; if (v > 0) add(e.poly, v); } }
@@ -107,7 +110,7 @@ window.Views = (() => {
     const cv = document.createElement('canvas'); cv.width = n; cv.height = n; const c = cv.getContext('2d'); const img = c.createImageData(n, n); const px = img.data;
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const v = acc[y * n + x] / ref; if (v <= 0.015) continue; const k = lut[Math.min(47, Math.floor(Math.min(1, v) * 47))]; const o = ((n - 1 - y) * n + x) * 4; px[o] = k[0]; px[o + 1] = k[1]; px[o + 2] = k[2]; px[o + 3] = k[3]; }
     c.putImageData(img, 0, 0);
-    heat = { res, kind, R: st.R, cx: st.centre[0], cy: st.centre[1], dark: Charts.dark(), canvas: cv, x0, y0, size: n * cell, ref, peak: nz.length ? nz[nz.length - 1] : 0 };
+    heat = { res, kind, key, dark: Charts.dark(), canvas: cv, x0, y0, size: n * cell, ref, peak: nz.length ? nz[nz.length - 1] : 0 };
     return heat;
   }
 
@@ -115,6 +118,7 @@ window.Views = (() => {
   function draw() { const st = V.getState ? V.getState() : {}; if (V.mode3d && st.net) draw3d(st); else { const c = V.ctx; c.setTransform(V.dpr, 0, 0, V.dpr, 0, 0); c.clearRect(0, 0, V.w, V.h); drawScene(c, st, false); drawChrome(c); } }
   function drawChrome(c) {
     const S = V.scale;
+    if (V.drawPreview && !V.mode3d) { const reg = V.drawPreview; c.beginPath(); if (reg.kind === 'rect') { const a = toScreen(reg.x0, reg.y1), b = toScreen(reg.x1, reg.y0); c.rect(a[0], a[1], b[0] - a[0], b[1] - a[1]); } else { const p = toScreen(reg.cx, reg.cy); c.arc(p[0], p[1], reg.R * S, 0, Math.PI * 2); } c.fillStyle = hexA(css('--accent'), 0.08); c.fill(); c.strokeStyle = css('--accent'); c.lineWidth = 1.5; c.setLineDash([6, 4]); c.stroke(); c.setLineDash([]); c.fillStyle = css('--accent'); c.font = `600 11px ${css('--mono')}`; c.textAlign = 'center'; c.textBaseline = 'bottom'; const cc = G.region.centre(reg); const q = toScreen(cc[0], cc[1]); c.fillText(G.region.describe(reg), q[0], q[1] - 6); }
     // keyboard focus: a centre mark so Enter has a visible target
     if (document.activeElement === V.cv) { const cx = V.w / 2, cy = V.h / 2; c.strokeStyle = hexA(css('--accent'), 0.9); c.lineWidth = 1.5; c.beginPath(); c.arc(cx, cy, 9, 0, Math.PI * 2); c.stroke(); c.beginPath(); c.moveTo(cx - 14, cy); c.lineTo(cx - 11, cy); c.moveTo(cx + 11, cy); c.lineTo(cx + 14, cy); c.moveTo(cx, cy - 14); c.lineTo(cx, cy - 11); c.moveTo(cx, cy + 11); c.lineTo(cx, cy + 14); c.stroke(); }
     // scale bar, bottom right so it never sits under the legend
@@ -126,7 +130,9 @@ window.Views = (() => {
     const line = (poly, w, color, dash) => { c.beginPath(); for (let i = 0; i < poly.length; i++) { const p = toScreen(poly[i][0], poly[i][1]); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); } c.lineWidth = w; c.strokeStyle = color; c.setLineDash(dash || []); c.stroke(); c.setLineDash([]); };
     const poly = (ring, fill, stroke, lw) => { c.beginPath(); ring.forEach((q, i) => { const p = toScreen(q[0], q[1]); if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]); }); c.closePath(); if (fill) { c.fillStyle = fill; c.fill(); } if (stroke) { c.lineWidth = lw || 1; c.strokeStyle = stroke; c.stroke(); } };
     // study circle: the sheet the study is drawn on
-    if (st.centre) { const p = toScreen(st.centre[0], st.centre[1]); c.beginPath(); c.arc(p[0], p[1], st.R * S, 0, Math.PI * 2); c.fillStyle = css('--paper'); c.fill(); c.strokeStyle = css('--ink2'); c.lineWidth = 0.8; c.setLineDash([6, 4]); c.stroke(); c.setLineDash([]); }
+    const regionPath = (reg) => { c.beginPath(); if (reg.kind === 'rect') { const a = toScreen(reg.x0, reg.y1), b = toScreen(reg.x1, reg.y0); c.rect(a[0], a[1], b[0] - a[0], b[1] - a[1]); } else { const p = toScreen(reg.cx, reg.cy); c.arc(p[0], p[1], reg.R * S, 0, Math.PI * 2); } };
+    const reg = st.region || (st.centre ? G.region.circle(st.centre[0], st.centre[1], st.R) : null);
+    if (reg) { regionPath(reg); c.fillStyle = css('--paper'); c.fill(); c.strokeStyle = css('--ink2'); c.lineWidth = 0.8; c.setLineDash([6, 4]); c.stroke(); c.setLineDash([]); }
     // parks: hatched
     for (const pk of st.parks || []) { poly(pk.p, css('--park'), null); c.beginPath(); pk.p.forEach((q, i) => { const p = toScreen(q[0], q[1]); i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]); }); c.closePath(); c.fillStyle = hatch(c, css('--hatch'), Math.max(5, Math.min(9, 4 * S))); c.fill(); c.strokeStyle = css('--hatch'); c.lineWidth = 0.6; c.stroke(); }
     // streets: paper between kerb lines
@@ -218,7 +224,7 @@ window.Views = (() => {
         c.globalAlpha = 1;
       } });
     };
-    const ribbon = (pl, h, col) => { if (pl.length < 2 || h <= 0.2) return; const m = G.pointAt(pl, G.polyLen(pl) / 2); if (st.centre && G.dist([m[0], m[1]], st.centre) > st.R + 25) return; items.push({ d: depth3(m[0], m[1], h / 2), draw: () => { c.beginPath(); pl.forEach((p, i) => { const q = toScreen3(p[0], p[1], 0); i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); }); for (let i = pl.length - 1; i >= 0; i--) { const q = toScreen3(pl[i][0], pl[i][1], h); c.lineTo(q[0], q[1]); } c.closePath(); c.fillStyle = hexA(col, 0.72); c.fill(); c.beginPath(); pl.forEach((p, i) => { const q = toScreen3(p[0], p[1], h); i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); }); c.strokeStyle = col; c.lineWidth = 1.2; c.stroke(); } }); };
+    const ribbon = (pl, h, col) => { if (pl.length < 2 || h <= 0.2) return; const m = G.pointAt(pl, G.polyLen(pl) / 2); if (st.region && !G.region.contains(st.region, [m[0], m[1]], 25)) return; items.push({ d: depth3(m[0], m[1], h / 2), draw: () => { c.beginPath(); pl.forEach((p, i) => { const q = toScreen3(p[0], p[1], 0); i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); }); for (let i = pl.length - 1; i >= 0; i--) { const q = toScreen3(pl[i][0], pl[i][1], h); c.lineTo(q[0], q[1]); } c.closePath(); c.fillStyle = hexA(col, 0.72); c.fill(); c.beginPath(); pl.forEach((p, i) => { const q = toScreen3(p[0], p[1], h); i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); }); c.strokeStyle = col; c.lineWidth = 1.2; c.stroke(); } }); };
     // context buildings and the massing
     const dim = mode === 'walkshed' && st.walk; const cfill = css('--context'), cedge = css('--context-edge');
     for (const b of st.context || []) prism(b.poly, 0, Math.max(3, b.h || 10), cfill, cedge, dim ? 0.6 : 1, dim ? 0 : G.clamp(b.h / 120, 0, 1) * 0.35);
@@ -239,5 +245,5 @@ window.Views = (() => {
   function shade(hex, t, dk) { const h = hex.replace('#', ''); const n = parseInt(h.length === 3 ? h.split('').map((x) => x + x).join('') : h, 16); let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255; const k = dk ? 1 + 0.35 * t : 1 - 0.14 * t; r = G.clamp(r * k, 0, 255); g = G.clamp(g * k, 0, 255); b = G.clamp(b * k, 0, 255); return `rgb(${r | 0},${g | 0},${b | 0})`; }
   function snapshot(w, h, three) { const off = document.createElement('canvas'); off.width = w * 2; off.height = h * 2; const save = { cv: V.cv, ctx: V.ctx, w: V.w, h: V.h, dpr: V.dpr, mode3d: V.mode3d }; V.cv = off; V.ctx = off.getContext('2d'); V.w = w; V.h = h; V.dpr = 2; if (three != null) V.mode3d = !!three; const keep = base; base = null; const keepFlat = flatCv; flatCv = null; try { draw(); } finally { Object.assign(V, save); base = keep; flatCv = keepFlat; } return off.toDataURL('image/png'); }
   function set3d(on) { V.mode3d = !!on; V.needs = true; }
-  return { mount, fit, fitDowntown, V, toModel, toScreen, snapshot, set3d, heatField, invalidate: () => { V.needs = true; }, select: (s) => { V.sel = s; V.needs = true; } };
+  return { mount, fit, fitRegion, fitDowntown, V, toModel, toScreen, snapshot, set3d, heatField, invalidate: () => { V.needs = true; }, select: (s) => { V.sel = s; V.needs = true; } };
 })();

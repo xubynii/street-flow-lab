@@ -57,8 +57,8 @@ window.Site = (() => {
     if (h < 14) return nearArterial ? { retail: 0.6, restaurant: 0.25, office: 0.15 } : { office: 0.5, retail: 0.3, residential: 0.2 };
     return { residential: 0.45, office: 0.35, retail: 0.12, restaurant: 0.08 };
   };
-  function buildingsNear(centre, R, excludeRing) {
-    const d = D(), out = []; const within = (p) => G.dist(p, centre) <= R;
+  function buildingsNear(region, excludeRing) {
+    const d = D(), out = []; const within = (p) => G.region.contains(region, p, 0);
     const inSite = (poly) => excludeRing && G.pip(G.centroid(poly), excludeRing);
     const streetGrid = new G.Grid(100); for (const s of d.streets) if (s.u !== 'Residential') for (let k = 0; k < s.p.length - 1; k++) streetGrid.insert({ a: s.p[k], b: s.p[k + 1] }, G.bbox([s.p[k], s.p[k + 1]]));
     const nearArt = (c) => streetGrid.near(c, 40).some((e) => G.segDist(c, e.a, e.b) < 40);
@@ -75,8 +75,8 @@ window.Site = (() => {
     return out;
   }
   function existingOnParcel(ring) { const d = D(); const res = []; const seen = []; if (window.OSM) for (const b of window.OSM.b) { if (b.part) continue; const c = G.centroid(b.p); if (G.pip(c, ring)) { res.push({ poly: b.p, h: b.h || 10, name: b.n, lv: b.lv }); seen.push(b.p); } } for (const cf of d.foot) { const c = G.centroid(cf.p); if (G.pip(c, ring) && !seen.some((p) => G.pip(c, p))) res.push({ poly: cf.p, h: cf.h }); } return res; }
-  function parksNear(centre, R) { return (D().parks || []).filter((p) => p.p.some((q) => G.dist(q, centre) <= R)); }
-  function streetsNear(centre, R) { return D().streets.filter((s) => s.p.some((q) => G.dist(q, centre) <= R + 60)); }
+  function parksNear(region) { return (D().parks || []).filter((p) => p.p.some((q) => G.region.contains(region, q, 0))); }
+  function streetsNear(region) { return D().streets.filter((s) => s.p.some((q) => G.region.contains(region, q, 60))); }
   function rowWidthAt(p) { let best = null, bd = 40; for (const r of D().row) { const dd = Math.hypot(r[0] - p[0], r[1] - p[1]); if (dd < bd) { bd = dd; best = r[2]; } } return best; }
   return { available, parcelAt, search, frame, toLocal, fromLocal, siteFromParcel, frameForImport, buildingsNear, existingOnParcel, parksNear, streetsNear, rowWidthAt, zoneAt, streetName, ringOf, edgeKinds };
 })();

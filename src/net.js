@@ -12,10 +12,10 @@ window.Net = (() => {
   const NICE = (n) => (window.Site ? Site.streetName(n) : n);
 
   function build(opts) {
-    const { centre, R } = opts; const P = Object.assign({ sidewalkScale: 1, cycle: 80, seed: 7 }, opts.params || {});
+    const region = opts.region || G.region.circle(opts.centre[0], opts.centre[1], opts.R); const centre = G.region.centre(region), R = G.region.radius(region); const P = Object.assign({ sidewalkScale: 1, cycle: 80, seed: 7 }, opts.params || {});
     const rnd = G.rng(P.seed * 7919 + 11);
     const S = window.OSMS; if (!S) throw new Error('osm-streets.js not loaded');
-    const inR = (p, r) => G.dist(p, centre) <= r;
+    const inR = (p, r) => G.region.contains(region, p, r - R); // r is written as R + pad
     const ways = S.ways.filter((w) => w.p.some((p) => inR(p, R + 80)));
     const useV = new Map(), useP = new Map();
     const cnt = (m, id) => m.set(id, (m.get(id) || 0) + 1);
@@ -152,7 +152,7 @@ window.Net = (() => {
     // still-dangling synthetic ends: try a wider attach
     for (const c of corners) if (ped.nodes[c.node].adj.filter((ei) => ped.edges[ei].alive).length < 2) attachNode(ped, c.node, { maxD: 30, skipKinds: [], linkKind: 'corner' });
 
-    const net = { centre, R, params: P, veh, ped, gates: { ped: [], veh: [] }, trees: { ped: new Map(), vehTo: new Map(), vehFrom: new Map() }, attach: (p, o) => attach(net.ped, p, o), vehAccess: (p, o) => vehAccess(net, p, o) };
+    const net = { centre, R, region, params: P, veh, ped, gates: { ped: [], veh: [] }, trees: { ped: new Map(), vehTo: new Map(), vehFrom: new Map() }, attach: (p, o) => attach(net.ped, p, o), vehAccess: (p, o) => vehAccess(net, p, o) };
     computeGates(net);
     return net;
   }
@@ -203,8 +203,8 @@ window.Net = (() => {
   function computeGates(net) {
     const { ped, veh } = net; const c = net.centre;
     for (const n of ped.nodes) n.adj = n.adj.filter((ei) => ped.edges[ei].alive);
-    net.gates.ped = ped.nodes.filter((n) => n.adj.length === 1 && G.dist([n.x, n.y], c) > net.R - 2 && ped.edges[n.adj[0]].kind !== 'link' && ped.edges[n.adj[0]].kind !== 'corner').map((n) => n.i);
-    net.gates.veh = veh.nodes.filter((n) => n.deg === 1 && G.dist([n.x, n.y], c) > net.R - 2).map((n) => n.i);
+    net.gates.ped = ped.nodes.filter((n) => n.adj.length === 1 && G.region.dist(net.region, [n.x, n.y]) > -2 && ped.edges[n.adj[0]].kind !== 'link' && ped.edges[n.adj[0]].kind !== 'corner').map((n) => n.i);
+    net.gates.veh = veh.nodes.filter((n) => n.deg === 1 && G.region.dist(net.region, [n.x, n.y]) > -2).map((n) => n.i); void c;
     for (const n of ped.nodes) n.gate = false; for (const i of net.gates.ped) ped.nodes[i].gate = true;
     for (const n of veh.nodes) n.gate = false; for (const i of net.gates.veh) veh.nodes[i].gate = true;
   }
